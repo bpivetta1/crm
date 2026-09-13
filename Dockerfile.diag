@@ -1,0 +1,24 @@
+# Diagnostico descartavel. A API do EasyPanel devolve so o comando que falhou,
+# nunca a saida do build, e nao ha endpoint de log. Entao cada passo roda com
+# `|| true`, grava em /srv e o container serve isso por HTTP.
+# Criar o servico com env VAZIO: o EasyPanel repassa toda env como --build-arg,
+# e o log fica publico enquanto este servico existir.
+FROM node:22-bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates openssl curl unzip \
+ && rm -rf /var/lib/apt/lists/*
+RUN (npm install -g bun@1.3.12; echo "exit=$?") > /tmp/00-bun.log 2>&1 || true
+
+WORKDIR /repo
+COPY . .
+
+RUN mkdir -p /srv
+RUN (echo "### node"; node -v; echo "### bun"; bun -v; echo "### openssl"; openssl version; echo "### arquivos"; ls -la) > /srv/10-ambiente.log 2>&1 || true
+RUN (bun install --frozen-lockfile; echo "exit=$?") > /srv/20-install.log 2>&1 || true
+RUN (bunx turbo run build --filter=api; echo "exit=$?") > /srv/30-build-api.log 2>&1 || true
+RUN cp /tmp/00-bun.log /srv/00-bun.log 2>/dev/null || true
+RUN cd /srv && (for f in $(ls); do echo "===== $f"; tail -c 50000 "$f"; echo; done) > /tmp/all.txt && mv /tmp/all.txt /srv/all.txt
+
+EXPOSE 8080
+CMD ["node","-e","const fs=require('fs');require('http').createServer((q,s)=>{s.writeHead(200,{'content-type':'text/plain; charset=utf-8'});s.end(fs.readFileSync('/srv/all.txt','utf8'))}).listen(8080)"]
