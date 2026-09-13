@@ -1,8 +1,6 @@
-# apps/agent — runtime eve. Na Vercel ele usaria o Vercel Sandbox; fora dela,
-# eve/sandbox escolhe sozinho: usa `vercel` se a env VERCEL existir, senao
-# `docker` se o daemon responder, senao microsandbox, senao justbash — que roda
-# sem isolamento nenhum. Por isso a CLI do docker entra na imagem; o socket
-# precisa estar montado no servico para o backend bom ser escolhido.
+# TEMPORARIO — captura do erro de build do agente.
+# Cada passo roda com `|| true` e o container serve o texto na porta 2000, que
+# e onde agent-crm.nefo.pro ja aponta. Substituir pelo definitivo depois.
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
@@ -10,24 +8,18 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 RUN npm install -g bun@1.3.12
 
-# So o binario do cliente docker: ele fala com o socket do host, nao sobe daemon.
-RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz \
-      -o /tmp/docker.tgz \
- && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker \
- && rm /tmp/docker.tgz \
- && docker --version
-
 WORKDIR /repo
 COPY . .
+RUN mkdir -p /srv
 
-# Ver Dockerfile.api: prisma.config.ts exige DATABASE_URL ja no postinstall.
+RUN (curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz -o /tmp/docker.tgz \
+      && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker \
+      && docker --version; echo "EXIT=$?") > /srv/10-docker-cli.log 2>&1 || true
+
 ARG DB_FACHADA=postgresql://build:build@127.0.0.1:5432/build?schema=public
+RUN (DATABASE_URL=$DB_FACHADA bun install --frozen-lockfile; echo "EXIT=$?") > /srv/20-install.log 2>&1 || true
+RUN (DATABASE_URL=$DB_FACHADA bunx turbo run build --filter=agent; echo "EXIT=$?") > /srv/30-build-agent.log 2>&1 || true
+RUN cd /srv && (for f in $(ls *.log); do echo "===== $f"; tail -c 25000 "$f"; echo; done) > /tmp/all.txt && mv /tmp/all.txt /srv/all.txt
 
-RUN DATABASE_URL=$DB_FACHADA bun install --frozen-lockfile
-RUN DATABASE_URL=$DB_FACHADA bunx turbo run build --filter=agent
-
-ENV NODE_ENV=production \
-    AGENT_PORT=2000
 EXPOSE 2000
-WORKDIR /repo/apps/agent
-CMD ["bun", "run", "start"]
+CMD ["node","-e","const fs=require('fs');require('http').createServer((q,s)=>{s.writeHead(200,{'content-type':'text/plain; charset=utf-8'});s.end(fs.readFileSync('/srv/all.txt','utf8'))}).listen(2000)"]
