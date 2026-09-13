@@ -3,7 +3,7 @@
 #
 # Node E Bun: o bun e o gerenciador do monorepo, mas o postinstall de apps/api
 # chama `node` e o engine do Prisma precisa de openssl.
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates openssl curl unzip \
