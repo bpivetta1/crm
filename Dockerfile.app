@@ -16,8 +16,8 @@ COPY . .
 # O bundle do cliente congela NEXT_PUBLIC_API_URL no momento do build
 # (next.config.ts le API_URL), entao a origem real tem que estar aqui, nao so
 # no runtime. O EasyPanel repassa a env do servico como --build-arg.
-ARG API_URL=https://api-crm.nefo.pro
-ARG APP_URL=https://crm.nefo.pro
+ARG API_URL=https://compai-api.nefo.pro
+ARG APP_URL=https://compai.nefo.pro
 ENV API_URL=${API_URL} \
     APP_URL=${APP_URL}
 
