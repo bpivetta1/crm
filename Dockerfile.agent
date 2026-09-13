@@ -31,5 +31,4 @@ RUN DATABASE_URL=$DB_FACHADA bunx turbo run build --filter=agent
 ENV NODE_ENV=production \
     AGENT_PORT=2000
 EXPOSE 2000
-WORKDIR /repo/apps/agent
-CMD ["bun", "run", "start"]
+CMD ["sh", "/repo/boot-agent.sh"]
