@@ -1,8 +1,5 @@
-# TEMPORARIO — captura do erro do `bun install`.
-# A API do EasyPanel nao devolve saida de build e nao ha endpoint de log, entao
-# cada passo roda com `|| true`, grava em /srv e o container serve o texto na
-# porta 3001 (a mesma que o dominio api-crm.nefo.pro ja aponta).
-# Substituir pelo Dockerfile real assim que a causa estiver identificada.
+# apps/api — NestJS sobre Bun. E quem serve /api/auth/* e detem o banco,
+# por isso as migracoes rodam aqui no start, e nao nos outros dois servicos.
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
@@ -13,11 +10,19 @@ RUN npm install -g bun@1.3.12
 WORKDIR /repo
 COPY . .
 
-RUN mkdir -p /srv
-RUN (echo "### versoes"; node -v; bun -v; echo; echo "### memoria"; free -m 2>/dev/null || true; echo; echo "### disco"; df -h / 2>/dev/null) > /srv/05-ambiente.log 2>&1 || true
-RUN (bun install --frozen-lockfile; echo "EXIT=$?") > /srv/10-install-frozen.log 2>&1 || true
-RUN (bun install; echo "EXIT=$?") > /srv/20-install-livre.log 2>&1 || true
-RUN cd /srv && (for f in $(ls *.log); do echo "===== $f"; tail -c 30000 "$f"; echo; done) > /tmp/all.txt && mv /tmp/all.txt /srv/all.txt
+# packages/db/prisma.config.ts resolve env("DATABASE_URL") assim que e
+# carregado, e o postinstall de @crm/db roda `prisma generate` — sem a variavel
+# o `bun install` morre com PrismaConfigEnvError. O valor aqui e de fachada e
+# fica so na linha do RUN: generate nao conecta no banco, e assim a credencial
+# real nunca entra numa camada da imagem. No runtime vale a env do servico.
+ARG DB_FACHADA=postgresql://build:build@127.0.0.1:5432/build?schema=public
 
+RUN DATABASE_URL=$DB_FACHADA bun install --frozen-lockfile
+# apps/api/src/generated/server.ts vem versionado e o build NAO pode regerar:
+# o gerador exige uma GLIBC mais nova que a da imagem. Regerar e local.
+RUN DATABASE_URL=$DB_FACHADA bunx turbo run build --filter=api
+
+ENV NODE_ENV=production \
+    PORT=3001
 EXPOSE 3001
-CMD ["node","-e","const fs=require('fs');require('http').createServer((q,s)=>{s.writeHead(200,{'content-type':'text/plain; charset=utf-8'});s.end(fs.readFileSync('/srv/all.txt','utf8'))}).listen(3001)"]
+CMD ["sh", "-c", "cd packages/db && bunx prisma migrate deploy && cd ../../apps/api && exec bun run start:prod"]
