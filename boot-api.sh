@@ -5,6 +5,10 @@
 # isto um crash-loop e invisivel.
 mkdir -p /srv
 {
+  echo "### bootstrap do banco"
+  sh /repo/bootstrap-db.sh 2>&1
+  echo "bootstrap_exit=$?"
+  echo
   echo "### migrate deploy"
   cd /repo/packages/db || exit 1
   bunx prisma migrate deploy 2>&1
