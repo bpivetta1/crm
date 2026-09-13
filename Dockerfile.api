@@ -25,4 +25,6 @@ RUN DATABASE_URL=$DB_FACHADA bunx turbo run build --filter=api
 ENV NODE_ENV=production \
     PORT=3001
 EXPOSE 3001
-CMD ["sh", "-c", "cd packages/db && bunx prisma migrate deploy && cd ../../apps/api && exec bun run start:prod"]
+# boot-api.sh roda a migracao e sobe a API; se ela cair, serve o log na mesma
+# porta — sem isso um crash-loop aqui e invisivel.
+CMD ["sh", "/repo/boot-api.sh"]
